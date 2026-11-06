@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Hex Proto Decoder</title>
+<title>Dev Tools</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
@@ -743,7 +743,7 @@ details[open] > summary .caret {
   <header class="topbar">
     <div class="logo" aria-hidden="true">DT</div>
     <div class="brand">
-      <h1>Dev Tool</h1>
+      <h1>Dev Tools</h1>
       <span>Recipe workbench: decode, decrypt, inflate, inspect protobuf</span>
     </div>
     <span class="spacer"></span>
@@ -790,7 +790,7 @@ details[open] > summary .caret {
           <button type="button" id="clear-input">Clear</button>
         </div>
         <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off"
-          placeholder="Paste input here."></textarea>
+          placeholder="Paste input here"></textarea>
       </section>
 
       <section class="panel output-panel" aria-label="Output">
@@ -841,9 +841,6 @@ const DEFAULT_AES = {
   mode: "CBC",
   padding: "None",
 };
-
-const EXAMPLE_PLAIN_HEX = "08f4e6a3a6df1c120a706c617965725f6f6e651d0000c34221555555555555d53f285330f9ffffffffffffffff013a070102ac02f0a20442130801120573776f72641d0000204125000060c0421408021206736869656c641d0000803e25000080454a09fafbfcfdfeff0001fe52100a0364657810fdffffffffffffffff0152070a037374721012580165070000006a0d08631204736f6c6f1d0000803f720c0000c03f000010c000087a448101001409cc920100008a0105616c7068618a0104626574619501339388c399015839b4c8d61cc840a201027870";
-const EXAMPLE_ENCRYPTED_HEX = "b88a35e6f323aa9b7d91805c0f0a9c74780627c857ac2cd0d9066a7ca9a90d07e5ca56cea759b3983444dbebd5390dcd9c119b9b33634863b9c0e069d1d6b8fc8936e2e8e9fe0f4cf8a54c4c59e56ec02856c30c2437c0f6c2f7f19fecc33fb543a993ecae88ba5d46827887058145ac82573e8241c845b512bbbb0f68871ba89d4ae12d6d109feb43610580581da06c16c07bfc9b593a139a15306fc2cf0942c5fcc77e83a9d5a0715476c923e52731908c95980359d9e71821032db198665add8b620150efffeb21a6e02995fde5d16b0cc56e45c254244e3d90f577b99619";
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 const latin1 = new TextDecoder("latin1");
@@ -1637,11 +1634,9 @@ const OPERATIONS = {
 const PRESETS = {
   "Hex → AES → Protobuf": {
     steps: [["From Hex"], ["AES Decrypt", DEFAULT_AES], ["Protobuf Decode"]],
-    exampleInput: EXAMPLE_ENCRYPTED_HEX,
   },
   "Hex → Protobuf": {
     steps: [["From Hex"], ["Protobuf Decode"]],
-    exampleInput: EXAMPLE_PLAIN_HEX,
   },
 };
 
@@ -1854,7 +1849,7 @@ const ui = {
 };
 
 const storage = {
-  prefix: "hex-proto-decoder:",
+  prefix: "hex-proto-decoder-v2:",
   get(name, fallback) {
     try {
       const value = localStorage.getItem(this.prefix + name);
@@ -2175,8 +2170,6 @@ ui.recipeArea.addEventListener("drop", event => {
 function applyPreset(name) {
   const preset = PRESETS[name];
   recipe = preset.steps.map(([stepName, options]) => createStep(stepName, options));
-  ui.input.value = formatHex(hexToBytes(preset.exampleInput));
-  storage.set("input", ui.input.value);
   recipeChanged(true);
 }
 
@@ -2271,6 +2264,11 @@ async function bake() {
 
   ui.inputMeta.textContent = ui.input.value ? `${ui.input.value.length.toLocaleString()} chars` : "";
 
+  if (ui.input.value.trim() === "") {
+    showWaitingForInput();
+    return;
+  }
+
   let run;
   try {
     run = await runRecipe();
@@ -2326,6 +2324,21 @@ async function bake() {
     items.push({ text: "Add an operation to process the input", warn: true });
   }
   setStatusbar(items);
+}
+
+function showWaitingForInput() {
+  if (failedStep !== -1) {
+    failedStep = -1;
+    renderRecipe();
+  }
+  result = null;
+  ui.outputTabs.hidden = true;
+  ui.copy.hidden = true;
+  ui.outputMeta.textContent = "";
+  showOutputControls(null);
+  ui.output.innerHTML = `<div class="notice">Please input something.</div>`;
+  setStatus("idle", "Ready");
+  setStatusbar([{ text: plural(recipe.filter(step => !step.disabled).length, "step") }]);
 }
 
 function showFailure() {
@@ -2525,15 +2538,10 @@ ui.typesInKeys.checked = storage.get("types-in-keys", "0") === "1";
 ui.indent.value = storage.get("indent", "4");
 renderOperationList();
 
-const savedRecipe = loadRecipe();
-if (savedRecipe) {
-  recipe = savedRecipe;
-  ui.input.value = storage.get("input", "");
-  renderRecipe();
-  bake();
-} else {
-  applyPreset("Hex → AES → Protobuf");
-}
+ui.input.value = storage.get("input", "");
+recipe = loadRecipe() || PRESETS["Hex → AES → Protobuf"].steps.map(([name, options]) => createStep(name, options));
+renderRecipe();
+bake();
 </script>
 </body>
 </html>
