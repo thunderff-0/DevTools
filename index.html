@@ -867,7 +867,7 @@ const DEFAULT_AES = {
   key: { value: "Yg&tc%DEuh6%Zc^8", format: "UTF8" },
   iv: { value: "6oyZDr22E3ychjM%", format: "UTF8" },
   mode: "CBC",
-  padding: "None",
+  padding: "Auto",
 };
 
 const utf8 = new TextDecoder("utf-8", { fatal: true });
@@ -1583,15 +1583,18 @@ function addPkcs7Padding(bytes) {
   return padded;
 }
 
-function removePkcs7Padding(bytes) {
+function hasPkcs7Padding(bytes) {
   const padLength = bytes[bytes.length - 1];
-  const valid = bytes.length > 0
+  return bytes.length > 0
     && padLength >= 1
     && padLength <= 16
     && padLength <= bytes.length
     && bytes.subarray(bytes.length - padLength).every(byte => byte === padLength);
+}
 
-  if (!valid) {
+function removePkcs7Padding(bytes) {
+  const padLength = bytes[bytes.length - 1];
+  if (!hasPkcs7Padding(bytes)) {
     throw "Padding check failed: the key or IV is wrong, or the data isn't PKCS7-padded (set Padding to None to see the raw output).";
   }
   return bytes.subarray(0, bytes.length - padLength);
@@ -1634,7 +1637,7 @@ async function aes(bytes, settings, encrypt) {
     throw `IV is ${iv.length} bytes. ${mode} needs 16.`;
   }
 
-  const usePadding = settings.padding === "PKCS7" && mode !== "CTR";
+  const usePadding = settings.padding !== "None" && mode !== "CTR";
   const data = encrypt && usePadding ? addPkcs7Padding(bytes) : bytes;
 
   if (mode !== "CTR" && data.length % 16 !== 0) {
@@ -1650,7 +1653,13 @@ async function aes(bytes, settings, encrypt) {
   }
 
   const decrypted = fromWordArray(CryptoJS.AES.decrypt({ ciphertext: toWordArray(data) }, toWordArray(key), options));
-  return usePadding ? removePkcs7Padding(decrypted) : decrypted;
+  if (!usePadding) {
+    return decrypted;
+  }
+  if (settings.padding === "Auto") {
+    return hasPkcs7Padding(decrypted) ? removePkcs7Padding(decrypted) : decrypted;
+  }
+  return removePkcs7Padding(decrypted);
 }
 
 
@@ -1660,7 +1669,7 @@ const AES_OPTIONS = [
   { id: "key", label: "Key", type: "key", default: { value: "", format: "Hex" } },
   { id: "iv", label: "IV", type: "key", default: { value: "", format: "Hex" } },
   { id: "mode", label: "Mode", type: "select", choices: ["CBC", "ECB", "CTR", "GCM"], default: "CBC", half: true },
-  { id: "padding", label: "Padding", type: "select", choices: ["PKCS7", "None"], default: "PKCS7", half: true },
+  { id: "padding", label: "Padding", type: "select", choices: ["Auto", "PKCS7", "None"], default: "Auto", half: true },
 ];
 
 const OPERATIONS = {
@@ -1973,7 +1982,7 @@ const ui = {
 };
 
 const storage = {
-  prefix: "hex-proto-decoder-v2:",
+  prefix: "hex-proto-decoder-v3:",
   get(name, fallback) {
     try {
       const value = localStorage.getItem(this.prefix + name);
