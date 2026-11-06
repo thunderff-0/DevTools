@@ -1,1 +1,2539 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hex Proto Decoder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<style>
+:root {
+  --bg: #eef0f3;
+  --panel: #ffffff;
+  --raised: #f6f7f9;
+  --fg: #14171c;
+  --muted: #616875;
+  --faint: #8b919c;
+  --line: #e1e4e9;
+  --line-strong: #cfd3da;
+  --accent: #2457d6;
+  --accent-soft: #e6edfc;
+  --accent-ink: #ffffff;
+  --key: #1d4fc4;
+  --string: #0b7a4e;
+  --number: #b0420a;
+  --float: #7c2fb5;
+  --bytes: #5f6673;
+  --punct: #9097a3;
+  --ok: #18864b;
+  --warn: #a06400;
+  --err: #c22631;
+  --err-soft: #fdeced;
+  --hover: #f1f2f4;
+  --sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0b0d10;
+    --panel: #121519;
+    --raised: #171b20;
+    --fg: #e6e8eb;
+    --muted: #959ba6;
+    --faint: #6b717c;
+    --line: #22272e;
+    --line-strong: #2e343c;
+    --accent: #6f95ff;
+    --accent-soft: #1a2440;
+    --accent-ink: #0b0d10;
+    --key: #86a6ff;
+    --string: #5fd0a0;
+    --number: #f0a46e;
+    --float: #cf9ef5;
+    --bytes: #8f96a2;
+    --punct: #5c636e;
+    --ok: #4cc68a;
+    --warn: #e5b04a;
+    --err: #ff7f86;
+    --err-soft: #2b1518;
+    --hover: #15181c;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0b0d10;
+  --panel: #121519;
+  --raised: #171b20;
+  --fg: #e6e8eb;
+  --muted: #959ba6;
+  --faint: #6b717c;
+  --line: #22272e;
+  --line-strong: #2e343c;
+  --accent: #6f95ff;
+  --accent-soft: #1a2440;
+  --accent-ink: #0b0d10;
+  --key: #86a6ff;
+  --string: #5fd0a0;
+  --number: #f0a46e;
+  --float: #cf9ef5;
+  --bytes: #8f96a2;
+  --punct: #5c636e;
+  --ok: #4cc68a;
+  --warn: #e5b04a;
+  --err: #ff7f86;
+  --err-soft: #2b1518;
+  --hover: #15181c;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 var(--sans);
+}
+
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-block: 10px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+.logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 11px var(--mono);
+}
+
+.brand {
+  display: grid;
+  min-width: 0;
+  line-height: 1.2;
+}
+
+.brand h1 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.brand span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--raised);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--faint);
+}
+
+.status-chip[data-state="ok"] .status-dot {
+  background: var(--ok);
+}
+
+.status-chip[data-state="warn"] .status-dot {
+  background: var(--warn);
+}
+
+.status-chip[data-state="error"] .status-dot {
+  background: var(--err);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 210px 330px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 0;
+  padding-block: 10px;
+  padding-left: max(10px, env(safe-area-inset-left, 0px));
+  padding-right: max(10px, env(safe-area-inset-right, 0px));
+}
+
+.io-column {
+  display: grid;
+  grid-template-rows: minmax(0, 2fr) minmax(0, 3fr);
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.panel-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  min-height: 42px;
+  padding: 6px 8px 6px 12px;
+  background: var(--raised);
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.panel-meta {
+  color: var(--muted);
+  font: 12px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+button,
+select,
+input[type="text"],
+input[type="number"] {
+  height: 28px;
+  padding: 0 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--fg);
+  font: 500 12px var(--sans);
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover,
+select:hover {
+  background: var(--raised);
+  border-color: var(--faint);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+button.primary:hover {
+  background: var(--accent);
+  filter: brightness(1.06);
+}
+
+button.icon {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1;
+}
+
+button.icon:hover {
+  background: var(--hover);
+  border-color: var(--line);
+  color: var(--fg);
+}
+
+input[type="text"],
+input[type="number"] {
+  width: 100%;
+  min-width: 0;
+  font-family: var(--mono);
+  font-weight: 400;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox input {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.checkbox:has(input:checked) {
+  color: var(--fg);
+}
+
+input.search {
+  width: calc(100% - 16px);
+  margin: 8px;
+}
+
+.operation-list {
+  padding-bottom: 10px;
+}
+
+.category {
+  padding: 10px 12px 4px;
+  color: var(--faint);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.operation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: auto;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-weight: 500;
+  text-align: left;
+  cursor: grab;
+}
+
+.operation:hover {
+  background: var(--accent-soft);
+}
+
+.operation .add {
+  margin-left: auto;
+  color: var(--faint);
+}
+
+.recipe {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  min-height: 100%;
+  padding: 10px;
+}
+
+.recipe.drop-target {
+  background: var(--accent-soft);
+}
+
+.step {
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+}
+
+.step.disabled {
+  opacity: 0.55;
+}
+
+.step.failed {
+  border-color: var(--err);
+}
+
+.step.dragging {
+  opacity: 0.4;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 10px;
+  background: var(--raised);
+  border-bottom: 1px solid var(--line);
+  cursor: grab;
+}
+
+.step-number {
+  width: 16px;
+  color: var(--faint);
+  font: 11px var(--mono);
+}
+
+.step-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.step-fields {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+}
+
+.step-fields:empty {
+  display: none;
+}
+
+.field {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.value-with-format {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px;
+  gap: 6px;
+}
+
+.two-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.step-error {
+  padding: 8px 10px;
+  background: var(--err-soft);
+  color: var(--err);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.recipe-empty {
+  padding: 18px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 7px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.presets {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+textarea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 12px 14px;
+  border: 0;
+  outline: none;
+  resize: none;
+  background: var(--panel);
+  color: var(--fg);
+  font: 12.5px/1.7 var(--mono);
+  overflow-wrap: anywhere;
+}
+
+textarea::placeholder {
+  color: var(--faint);
+}
+
+.tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.tab {
+  height: 24px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+}
+
+.tab:hover {
+  background: transparent;
+  color: var(--fg);
+}
+
+.tab[aria-selected="true"] {
+  background: var(--panel);
+  color: var(--fg);
+  box-shadow: 0 0 0 1px var(--line-strong);
+}
+
+.code {
+  margin: 0;
+  padding: 12px 14px;
+  font: 12.5px/1.65 var(--mono);
+  white-space: pre;
+  tab-size: 4;
+}
+
+.code.wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.code .key { color: var(--key); }
+.code .string { color: var(--string); }
+.code .number { color: var(--number); }
+.code .float { color: var(--float); }
+.code .bytes { color: var(--bytes); }
+.code .punct { color: var(--punct); }
+.code .offset { color: var(--faint); }
+.code .ascii { color: var(--string); }
+
+.tree {
+  padding: 6px 0 12px;
+  font: 12.5px/1.5 var(--mono);
+}
+
+.tree summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.tree summary::-webkit-details-marker {
+  display: none;
+}
+
+.tree-row {
+  display: grid;
+  grid-template-columns: 14px auto auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 14px 2px calc(14px + var(--depth, 0) * 18px);
+  white-space: nowrap;
+}
+
+.tree-row:hover {
+  background: var(--raised);
+}
+
+.caret {
+  display: inline-block;
+  color: var(--faint);
+  font-size: 10px;
+  text-align: center;
+  transition: transform 0.12s;
+}
+
+details[open] > summary .caret {
+  transform: rotate(90deg);
+}
+
+.field-number {
+  color: var(--key);
+}
+
+.type-badge {
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  color: var(--muted);
+  font: 500 10.5px var(--sans);
+  letter-spacing: 0.02em;
+  line-height: 16px;
+}
+
+.type-badge.message {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.field-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field-value.string { color: var(--string); }
+.field-value.number { color: var(--number); }
+.field-value.float { color: var(--float); }
+.field-value.bytes { color: var(--bytes); }
+
+.field-value.summary {
+  color: var(--faint);
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
+.field-offset {
+  color: var(--faint);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.notice,
+.error-box {
+  margin: 16px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  font: 13px/1.5 var(--sans);
+  white-space: normal;
+}
+
+.notice {
+  border: 1px dashed var(--line-strong);
+  color: var(--muted);
+}
+
+.error-box {
+  background: var(--err-soft);
+  color: var(--err);
+}
+
+.statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  min-height: 30px;
+  padding-block: 6px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font: 11.5px var(--mono);
+}
+
+.statusbar span {
+  overflow-wrap: anywhere;
+}
+
+.statusbar .warn {
+  color: var(--warn);
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 190px 300px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  html,
+  body {
+    height: auto;
+  }
+
+  .app {
+    height: auto;
+    min-height: 100%;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+  }
+
+  .io-column {
+    grid-template-rows: auto auto;
+  }
+
+  .operations-panel .panel-body {
+    max-height: 220px;
+  }
+
+  textarea {
+    height: 26vh;
+    min-height: 160px;
+  }
+
+  .output-panel .panel-body {
+    min-height: 240px;
+    max-height: 70vh;
+  }
+
+  .brand span {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="topbar">
+    <div class="logo" aria-hidden="true">DT</div>
+    <div class="brand">
+      <h1>Dev Tool</h1>
+      <span>Recipe workbench: decode, decrypt, inflate, inspect protobuf</span>
+    </div>
+    <span class="spacer"></span>
+    <span class="status-chip" id="status-chip" data-state="idle">
+      <span class="status-dot"></span>
+      <span id="status-text">Ready</span>
+    </span>
+  </header>
+
+  <main class="workspace">
+    <section class="panel operations-panel" aria-label="Operations">
+      <div class="panel-header">
+        <span class="panel-title">Operations</span>
+      </div>
+      <div class="panel-body">
+        <input type="text" id="search" class="search" placeholder="Search operations" autocomplete="off" aria-label="Search operations">
+        <div class="operation-list" id="operation-list"></div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Recipe">
+      <div class="panel-header">
+        <span class="panel-title">Recipe</span>
+        <span class="spacer"></span>
+        <label class="checkbox" title="Run the recipe again on every change">
+          <input type="checkbox" id="auto-bake" checked>
+          <span>Auto</span>
+        </label>
+        <button type="button" id="bake">Bake</button>
+        <button type="button" id="clear-recipe" title="Remove all steps">Clear</button>
+      </div>
+      <div class="panel-body" id="recipe-area">
+        <div class="recipe" id="recipe"></div>
+      </div>
+    </section>
+
+    <div class="io-column">
+      <section class="panel" aria-label="Input">
+        <div class="panel-header">
+          <span class="panel-title">Input</span>
+          <span class="panel-meta" id="input-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" id="format-hex" title="Regroup hex as 16 bytes per line">Format hex</button>
+          <button type="button" id="clear-input">Clear</button>
+        </div>
+        <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off"
+          placeholder="Paste input here."></textarea>
+      </section>
+
+      <section class="panel output-panel" aria-label="Output">
+        <div class="panel-header">
+          <span class="panel-title">Output</span>
+          <div class="tabs" role="tablist" id="output-tabs" hidden>
+            <button type="button" class="tab" role="tab" id="tab-fields" aria-selected="false">Fields</button>
+            <button type="button" class="tab" role="tab" id="tab-json" aria-selected="true">JSON</button>
+          </div>
+          <span class="panel-meta" id="output-meta"></span>
+          <span class="spacer"></span>
+          <button type="button" id="expand-all" class="fields-control" hidden>Expand</button>
+          <button type="button" id="collapse-all" class="fields-control" hidden>Collapse</button>
+          <label class="checkbox json-control" hidden title="Add the guessed type to each key">
+            <input type="checkbox" id="types-in-keys">
+            <span>Types in keys</span>
+          </label>
+          <select id="indent" class="json-control" hidden aria-label="Indent">
+            <option value="2">Indent 2</option>
+            <option value="4" selected>Indent 4</option>
+          </select>
+          <button type="button" id="copy" class="primary">Copy</button>
+        </div>
+        <div class="panel-body" id="output"></div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="statusbar" id="statusbar" aria-live="polite"></footer>
+</div>
+
+<script>
+"use strict";
+
+const MAX_HEADER_BYTES = 32;
+const MAX_TRAILER_BYTES = 32;
+const MAX_SCAN_SIZE = 1024 * 1024;
+const FLOAT_RANGE = { 4: [1e-6, 1e9], 8: [1e-12, 1e18] };
+const MAX_NESTING = 48;
+const TREE_OPEN_LEVELS = 3;
+const HEX_DUMP_LIMIT = 64 * 1024;
+const GRPC_FRAME_FLAGS = [0x00, 0x01, 0x80, 0x81];
+const WIRE_TYPE_NAMES = { 0: "varint", 1: "i64", 2: "len", 5: "i32" };
+
+const DEFAULT_AES = {
+  key: { value: "Yg&tc%DEuh6%Zc^8", format: "UTF8" },
+  iv: { value: "6oyZDr22E3ychjM%", format: "UTF8" },
+  mode: "CBC",
+  padding: "None",
+};
+
+const EXAMPLE_PLAIN_HEX = "08f4e6a3a6df1c120a706c617965725f6f6e651d0000c34221555555555555d53f285330f9ffffffffffffffff013a070102ac02f0a20442130801120573776f72641d0000204125000060c0421408021206736869656c641d0000803e25000080454a09fafbfcfdfeff0001fe52100a0364657810fdffffffffffffffff0152070a037374721012580165070000006a0d08631204736f6c6f1d0000803f720c0000c03f000010c000087a448101001409cc920100008a0105616c7068618a0104626574619501339388c399015839b4c8d61cc840a201027870";
+const EXAMPLE_ENCRYPTED_HEX = "b88a35e6f323aa9b7d91805c0f0a9c74780627c857ac2cd0d9066a7ca9a90d07e5ca56cea759b3983444dbebd5390dcd9c119b9b33634863b9c0e069d1d6b8fc8936e2e8e9fe0f4cf8a54c4c59e56ec02856c30c2437c0f6c2f7f19fecc33fb543a993ecae88ba5d46827887058145ac82573e8241c845b512bbbb0f68871ba89d4ae12d6d109feb43610580581da06c16c07bfc9b593a139a15306fc2cf0942c5fcc77e83a9d5a0715476c923e52731908c95980359d9e71821032db198665add8b620150efffeb21a6e02995fde5d16b0cc56e45c254244e3d90f577b99619";
+
+const utf8 = new TextDecoder("utf-8", { fatal: true });
+const latin1 = new TextDecoder("latin1");
+const encoder = new TextEncoder();
+const printableText = /^(?:[\t\n\r]|[^\p{C}\p{Zl}\p{Zp}])+$/u;
+
+
+function readVarint(bytes, pos, end) {
+  let value = 0n;
+  let shift = 0n;
+
+  for (let i = 0; i < 10; i++) {
+    if (pos >= end) {
+      throw "truncated varint";
+    }
+    const byte = bytes[pos++];
+    value |= BigInt(byte & 0x7f) << shift;
+    if (byte < 0x80) {
+      if (value >> 64n) {
+        throw "varint over 64 bits";
+      }
+      return [value, pos];
+    }
+    shift += 7n;
+  }
+
+  throw "varint over 10 bytes";
+}
+
+function readFields(bytes, pos = 0, end = bytes.length, root = bytes) {
+  const fields = [];
+  const offset = bytes.byteOffset - root.byteOffset;
+
+  while (pos < end) {
+    const fieldStart = pos;
+    try {
+      let tag;
+      [tag, pos] = readVarint(bytes, pos, end);
+      const number = Number(tag >> 3n);
+      const wireType = Number(tag & 7n);
+
+      if (number < 1 || number >= 2 ** 29) {
+        throw `field number ${number}`;
+      }
+
+      let value;
+      if (wireType === 0) {
+        [value, pos] = readVarint(bytes, pos, end);
+      } else {
+        let size;
+        if (wireType === 2) {
+          let length;
+          [length, pos] = readVarint(bytes, pos, end);
+          size = Number(length);
+        } else if (wireType === 1) {
+          size = 8;
+        } else if (wireType === 5) {
+          size = 4;
+        } else {
+          throw `wire type ${wireType}`;
+        }
+
+        if (pos + size > end) {
+          throw `${size}-byte value overruns the buffer`;
+        }
+        value = bytes.subarray(pos, pos + size);
+        pos += size;
+      }
+
+      fields.push({
+        number,
+        wireType,
+        value,
+        start: offset + fieldStart,
+        end: offset + pos,
+      });
+    } catch (problem) {
+      return { fields, stoppedAt: fieldStart, error: String(problem) };
+    }
+  }
+
+  return { fields, stoppedAt: end, error: null };
+}
+
+function isValidMessage(bytes, start, end) {
+  return readFields(bytes, start, end).error === null;
+}
+
+
+function bytesToHex(bytes) {
+  return Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function dataView(bytes) {
+  return new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
+function readFloat(bytes) {
+  return bytes.length === 4
+    ? dataView(bytes).getFloat32(0, true)
+    : dataView(bytes).getFloat64(0, true);
+}
+
+function readUnsigned(bytes) {
+  return bytes.length === 4
+    ? BigInt(dataView(bytes).getUint32(0, true))
+    : dataView(bytes).getBigUint64(0, true);
+}
+
+function toSigned64(value) {
+  return value >> 63n ? value - (1n << 64n) : value;
+}
+
+function isReadableText(bytes) {
+  if (bytes.length === 0) {
+    return false;
+  }
+  try {
+    const text = utf8.decode(bytes);
+    return printableText.test(text) && /\S/.test(text);
+  } catch {
+    return false;
+  }
+}
+
+function looksLikeFloat(value, width) {
+  const [min, max] = FLOAT_RANGE[width];
+  if (!Number.isFinite(value)) {
+    return false;
+  }
+  return value === 0 || (Math.abs(value) >= min && Math.abs(value) <= max);
+}
+
+function shortestFloatText(value, width) {
+  if (width === 8) {
+    return String(value);
+  }
+  for (let precision = 1; precision <= 9; precision++) {
+    const text = value.toPrecision(precision);
+    if (Math.fround(Number(text)) === value) {
+      return String(Number(text));
+    }
+  }
+  return String(value);
+}
+
+function significantDigits(bytes) {
+  const value = readFloat(bytes);
+  for (let precision = 1; precision <= 17; precision++) {
+    const rounded = Number(value.toPrecision(precision));
+    const roundTrips = bytes.length === 4 ? Math.fround(rounded) === value : rounded === value;
+    if (roundTrips) {
+      return precision;
+    }
+  }
+  return 17;
+}
+
+function isVarintList(bytes) {
+  let pos = 0;
+  while (pos < bytes.length) {
+    const start = pos;
+    try {
+      [, pos] = readVarint(bytes, pos, bytes.length);
+    } catch {
+      return false;
+    }
+    const overlong = pos - start > 1 && bytes[pos - 1] === 0;
+    if (overlong) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function readVarintList(bytes) {
+  const values = [];
+  let pos = 0;
+  while (pos < bytes.length) {
+    let value;
+    [value, pos] = readVarint(bytes, pos, bytes.length);
+    values.push(toSigned64(value));
+  }
+  return values;
+}
+
+function splitIntoChunks(bytes, width) {
+  const chunks = [];
+  for (let i = 0; i < bytes.length; i += width) {
+    chunks.push(bytes.subarray(i, i + width));
+  }
+  return chunks;
+}
+
+function guessPackedList(blobs) {
+  let best = null;
+
+  for (const [width, type] of [[8, "packed double"], [4, "packed float"]]) {
+    if (!blobs.every(blob => blob.length % width === 0)) {
+      continue;
+    }
+    const chunks = blobs.flatMap(blob => splitIntoChunks(blob, width));
+    const hasNonZero = chunks.some(chunk => chunk.some(byte => byte !== 0));
+    const allFloats = chunks.every(chunk => looksLikeFloat(readFloat(chunk), width));
+    if (!hasNonZero || !allFloats) {
+      continue;
+    }
+    const averageDigits = chunks.reduce((sum, chunk) => sum + significantDigits(chunk), 0) / chunks.length;
+    if (!best || averageDigits < best.averageDigits) {
+      best = { width, type, averageDigits };
+    }
+  }
+
+  if (best) {
+    return {
+      type: best.type,
+      values: blobs.map(blob =>
+        splitIntoChunks(blob, best.width).map(chunk => ({ float: readFloat(chunk), width: best.width }))
+      ),
+    };
+  }
+
+  if (blobs.every(isVarintList)) {
+    return { type: "packed int", values: blobs.map(readVarintList) };
+  }
+
+  return null;
+}
+
+
+function decodeMessage(fields, depth, state) {
+  const groups = new Map();
+
+  for (const field of fields) {
+    const groupKey = `${field.number}|${field.wireType}`;
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, { number: field.number, wireType: field.wireType, raw: [], positions: [] });
+    }
+    const group = groups.get(groupKey);
+    group.raw.push(field.value);
+    group.positions.push({ start: field.start, end: field.end });
+  }
+
+  const wireTypesPerNumber = new Map();
+  for (const group of groups.values()) {
+    wireTypesPerNumber.set(group.number, (wireTypesPerNumber.get(group.number) || 0) + 1);
+  }
+
+  const sortedGroups = [...groups.values()].sort((a, b) => a.number - b.number || a.wireType - b.wireType);
+  const entries = [];
+
+  for (const group of sortedGroups) {
+    state.fieldCount += group.raw.length;
+    const { type, values } = decodeGroup(group, depth, state);
+
+    let key = String(group.number);
+    if (wireTypesPerNumber.get(group.number) > 1) {
+      key += "#" + WIRE_TYPE_NAMES[group.wireType];
+    }
+
+    entries.push({ key, type, values, positions: group.positions });
+  }
+
+  return { entries };
+}
+
+function decodeNested(bytes, depth, state) {
+  const { fields } = readFields(bytes, 0, bytes.length, state.root);
+  return decodeMessage(fields, depth + 1, state);
+}
+
+function decodeBlob(bytes, depth, state) {
+  if (bytes.length === 0) {
+    return "";
+  }
+  if (isReadableText(bytes)) {
+    return utf8.decode(bytes);
+  }
+  if (depth < MAX_NESTING && isValidMessage(bytes)) {
+    return decodeNested(bytes, depth, state);
+  }
+  return { hex: bytesToHex(bytes) };
+}
+
+function decodeGroup(group, depth, state) {
+  const raw = group.raw;
+
+  if (group.wireType === 0) {
+    return { type: "varint", values: raw.map(toSigned64) };
+  }
+
+  if (group.wireType === 1 || group.wireType === 5) {
+    const width = group.wireType === 5 ? 4 : 8;
+    const floats = raw.map(readFloat);
+    const hasNonZero = raw.some(bytes => bytes.some(byte => byte !== 0));
+
+    if (hasNonZero && floats.every(value => looksLikeFloat(value, width))) {
+      return {
+        type: width === 4 ? "float" : "double",
+        values: floats.map(value => ({ float: value, width })),
+      };
+    }
+    return { type: width === 4 ? "fixed32" : "fixed64", values: raw.map(readUnsigned) };
+  }
+
+  if (raw.every(bytes => bytes.length === 0 || isReadableText(bytes))) {
+    return { type: "string", values: raw.map(bytes => utf8.decode(bytes)) };
+  }
+
+  if (depth < MAX_NESTING && raw.every(bytes => bytes.length > 0 && isValidMessage(bytes))) {
+    return { type: "message", values: raw.map(bytes => decodeNested(bytes, depth, state)) };
+  }
+
+  if (state.guessPacked) {
+    const packed = guessPackedList(raw);
+    if (packed) {
+      return packed;
+    }
+  }
+
+  const values = raw.map(bytes => decodeBlob(bytes, depth, state));
+  const allBytes = values.every(value => value && value.hex !== undefined);
+  return { type: allBytes ? "bytes" : "mixed", values };
+}
+
+function typeOfValue(value, groupType) {
+  if (groupType !== "mixed") {
+    return groupType;
+  }
+  if (typeof value === "string") {
+    return "string";
+  }
+  return value && value.entries ? "message" : "bytes";
+}
+
+
+async function decompress(bytes, formats) {
+  if (typeof DecompressionStream === "undefined") {
+    return null;
+  }
+  for (const format of formats) {
+    try {
+      const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream(format));
+      return new Uint8Array(await new Response(stream).arrayBuffer());
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+async function unwrapCompression(bytes, notes) {
+  let kind = null;
+  let result = null;
+
+  if (bytes[0] === 0x1f && bytes[1] === 0x8b) {
+    kind = "gzip";
+    result = await decompress(bytes, ["gzip"]);
+  } else if (bytes.length > 2 && bytes[0] === 0x78 && ((bytes[0] << 8) | bytes[1]) % 31 === 0) {
+    kind = "zlib";
+    result = await decompress(bytes, ["deflate"]);
+  }
+
+  if (!result) {
+    return bytes;
+  }
+  notes.push({ text: `${kind} ${bytes.length} → ${result.length} B` });
+  return result;
+}
+
+function splitGrpcFrames(bytes) {
+  const frames = [];
+  let pos = 0;
+
+  while (pos < bytes.length) {
+    if (bytes.length - pos < 5 || !GRPC_FRAME_FLAGS.includes(bytes[pos])) {
+      return null;
+    }
+    const size = dataView(bytes.subarray(pos + 1, pos + 5)).getUint32(0, false);
+    if (pos + 5 + size > bytes.length) {
+      return null;
+    }
+    frames.push({ flags: bytes[pos], payload: bytes.subarray(pos + 5, pos + 5 + size) });
+    pos += 5 + size;
+  }
+
+  return frames.length ? frames : null;
+}
+
+function splitLengthPrefixed(bytes) {
+  const messages = [];
+  let pos = 0;
+
+  while (pos < bytes.length) {
+    let size;
+    try {
+      [size, pos] = readVarint(bytes, pos, bytes.length);
+    } catch {
+      return null;
+    }
+    size = Number(size);
+    if (size === 0 || pos + size > bytes.length || !isValidMessage(bytes, pos, pos + size)) {
+      return null;
+    }
+    messages.push(bytes.subarray(pos, pos + size));
+    pos += size;
+  }
+
+  return messages.length ? messages : null;
+}
+
+function findMessageInside(bytes) {
+  const total = bytes.length;
+  if (total > MAX_SCAN_SIZE) {
+    return null;
+  }
+
+  const parsesFromStart = readFields(bytes).stoppedAt;
+  let best = null;
+
+  for (let header = 0; header <= Math.min(MAX_HEADER_BYTES, total - 1); header++) {
+    if (header > 0 && header < parsesFromStart) {
+      continue;
+    }
+    for (const field of readFields(bytes, header).fields) {
+      const trailer = total - field.end;
+      const coversHalf = field.end - header >= Math.max(2, total >> 1);
+      const smaller = !best || header + trailer < best.header + best.trailer;
+      if (trailer <= MAX_TRAILER_BYTES && (header || trailer) && coversHalf && smaller) {
+        best = { header, trailer };
+      }
+    }
+  }
+
+  return best;
+}
+
+async function splitMessages(bytes, notes) {
+  if (GRPC_FRAME_FLAGS.includes(bytes[0])) {
+    const frames = splitGrpcFrames(bytes);
+    if (frames) {
+      const messages = [];
+      for (const frame of frames) {
+        let payload = frame.payload;
+        if (frame.flags & 0x80) {
+          const trailers = latin1.decode(payload).trim().replace(/\r\n/g, " | ");
+          notes.push({ text: `trailers: ${trailers}` });
+          continue;
+        }
+        if (frame.flags & 0x01) {
+          const inflated = await decompress(payload, ["gzip", "deflate", "deflate-raw"]);
+          if (inflated) {
+            payload = inflated;
+          } else {
+            notes.push({ text: "compressed gRPC frame, unknown codec", warn: true });
+          }
+        }
+        messages.push(payload);
+      }
+      notes.push({ text: `gRPC ${frames.length} frame${frames.length > 1 ? "s" : ""}` });
+      return { messages, label: "frame" };
+    }
+  }
+
+  if (isValidMessage(bytes)) {
+    return { messages: [bytes], label: "message" };
+  }
+
+  const prefixed = splitLengthPrefixed(bytes);
+  if (prefixed) {
+    notes.push({ text: `length-prefixed ×${prefixed.length}` });
+    return { messages: prefixed, label: "message" };
+  }
+
+  const found = findMessageInside(bytes);
+  if (!found) {
+    return { messages: null };
+  }
+
+  const { header, trailer } = found;
+  if (header) {
+    notes.push({ text: `skipped ${header} B header ${bytesToHex(bytes.subarray(0, header))}`, warn: true });
+  }
+  if (trailer) {
+    notes.push({ text: `skipped ${trailer} B trailer ${bytesToHex(bytes.subarray(bytes.length - trailer))}`, warn: true });
+  }
+  return { messages: [bytes.subarray(header, bytes.length - trailer)], label: "message" };
+}
+
+async function decodeProtobuf(input, guessPacked) {
+  const notes = [];
+  const state = { fieldCount: 0, guessPacked, root: null };
+  const bytes = await unwrapCompression(input, notes);
+  const { messages, label } = await splitMessages(bytes, notes);
+
+  if (messages && messages.length === 0) {
+    return { roots: [], label, notes, fieldCount: 0, partial: false };
+  }
+
+  if (messages) {
+    const roots = messages.map(message => {
+      state.root = message;
+      return decodeMessage(readFields(message).fields, 0, state);
+    });
+    return { roots, label, notes, fieldCount: state.fieldCount, partial: false };
+  }
+
+  const attempt = readFields(bytes);
+  if (attempt.fields.length === 0) {
+    throw `Not protobuf: parsing fails at byte 0 (${attempt.error}). Check the earlier steps: wrong key, missing From Hex, or the data needs another step first.`;
+  }
+
+  notes.push({
+    text: `stopped at 0x${attempt.stoppedAt.toString(16)} of 0x${bytes.length.toString(16)}: ${attempt.error}`,
+    warn: true,
+  });
+  state.root = bytes;
+  const root = decodeMessage(attempt.fields, 0, state);
+  return { roots: [root], label: "message", notes, fieldCount: state.fieldCount, partial: true };
+}
+
+
+function hexToBytes(text) {
+  const unquoted = text.replace(/^\s*b?(['"])([\s\S]*)\1\s*$/, "$2");
+  const digits = unquoted.replace(/0x|\\x/gi, "").replace(/[\s:,;-]/g, "");
+  const invalid = digits.search(/[^0-9a-fA-F]/);
+
+  if (invalid >= 0) {
+    throw `"${digits[invalid]}" is not a hex digit. Hex uses only 0–9 and a–f. If the input is base64, use From Base64 instead.`;
+  }
+  if (digits.length % 2 !== 0) {
+    throw `Odd number of hex digits (${digits.length}). One digit is missing or extra.`;
+  }
+
+  const bytes = new Uint8Array(digits.length / 2);
+  for (let i = 0; i < bytes.length; i++) {
+    bytes[i] = parseInt(digits.substr(i * 2, 2), 16);
+  }
+  return bytes;
+}
+
+function base64ToBytes(text) {
+  const normalized = text.replace(/\s/g, "").replace(/=+$/, "").replace(/-/g, "+").replace(/_/g, "/");
+  if (/[^A-Za-z0-9+/]/.test(normalized) || normalized.length % 4 === 1) {
+    throw "Not valid base64.";
+  }
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), char => char.charCodeAt(0));
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function formatHex(bytes) {
+  const lines = bytesToHex(bytes).match(/.{1,32}/g) || [];
+  return lines.map(line => line.match(/../g).join(" ")).join("\n");
+}
+
+function hexWithSeparator(bytes, separator) {
+  const pairs = bytesToHex(bytes).match(/../g) || [];
+  if (separator === "None") {
+    return pairs.join("");
+  }
+  if (separator === "Space") {
+    return pairs.join(" ");
+  }
+  const lines = [];
+  for (let i = 0; i < pairs.length; i += 16) {
+    lines.push(pairs.slice(i, i + 16).join(" "));
+  }
+  return lines.join("\n");
+}
+
+function parseKey(setting) {
+  const value = setting.value || "";
+  if (setting.format === "Hex") {
+    return hexToBytes(value);
+  }
+  if (setting.format === "Base64") {
+    return base64ToBytes(value);
+  }
+  return encoder.encode(value);
+}
+
+function dropBytes(bytes, start, length) {
+  const from = Math.min(Math.max(0, start), bytes.length);
+  const to = Math.min(from + Math.max(0, length), bytes.length);
+  const result = new Uint8Array(bytes.length - (to - from));
+  result.set(bytes.subarray(0, from));
+  result.set(bytes.subarray(to), from);
+  return result;
+}
+
+function takeBytes(bytes, start, length) {
+  const from = Math.max(0, start);
+  const to = length > 0 ? from + length : bytes.length;
+  return bytes.slice(from, to);
+}
+
+function xorBytes(bytes, key) {
+  if (key.length === 0) {
+    throw "XOR needs a key.";
+  }
+  return bytes.map((byte, i) => byte ^ key[i % key.length]);
+}
+
+async function decompressOrFail(bytes, format, message) {
+  const result = await decompress(bytes, [format]);
+  if (!result) {
+    throw message;
+  }
+  return result;
+}
+
+
+function toWordArray(bytes) {
+  return CryptoJS.lib.WordArray.create(bytes);
+}
+
+function fromWordArray(words) {
+  const bytes = new Uint8Array(words.sigBytes);
+  for (let i = 0; i < words.sigBytes; i++) {
+    bytes[i] = (words.words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+  }
+  return bytes;
+}
+
+function addPkcs7Padding(bytes) {
+  const padLength = 16 - (bytes.length % 16);
+  const padded = new Uint8Array(bytes.length + padLength);
+  padded.set(bytes);
+  padded.fill(padLength, bytes.length);
+  return padded;
+}
+
+function removePkcs7Padding(bytes) {
+  const padLength = bytes[bytes.length - 1];
+  const valid = bytes.length > 0
+    && padLength >= 1
+    && padLength <= 16
+    && padLength <= bytes.length
+    && bytes.subarray(bytes.length - padLength).every(byte => byte === padLength);
+
+  if (!valid) {
+    throw "Padding check failed: the key or IV is wrong, or the data isn't PKCS7-padded (set Padding to None to see the raw output).";
+  }
+  return bytes.subarray(0, bytes.length - padLength);
+}
+
+async function aesGcm(bytes, key, iv, encrypt) {
+  if (iv.length === 0) {
+    throw "GCM needs an IV (usually 12 bytes).";
+  }
+  if (!crypto.subtle) {
+    throw "GCM needs WebCrypto, which this browser blocks here.";
+  }
+  const usage = encrypt ? "encrypt" : "decrypt";
+  const cryptoKey = await crypto.subtle.importKey("raw", key, "AES-GCM", false, [usage]);
+  try {
+    const result = await crypto.subtle[usage]({ name: "AES-GCM", iv }, cryptoKey, bytes);
+    return new Uint8Array(result);
+  } catch {
+    throw "GCM authentication failed: wrong key, wrong IV, or the 16-byte tag isn't at the end of the data.";
+  }
+}
+
+async function aes(bytes, settings, encrypt) {
+  const key = parseKey(settings.key);
+  const mode = settings.mode;
+
+  if (![16, 24, 32].includes(key.length)) {
+    throw `Key is ${key.length} bytes. AES needs 16, 24 or 32 (AES-128/192/256). Check the key format.`;
+  }
+
+  const iv = mode === "ECB" ? new Uint8Array(16) : parseKey(settings.iv);
+
+  if (mode === "GCM") {
+    return aesGcm(bytes, key, iv, encrypt);
+  }
+  if (typeof CryptoJS === "undefined") {
+    throw "The AES library didn't load. Check the connection and reload the page.";
+  }
+  if (iv.length !== 16) {
+    throw `IV is ${iv.length} bytes. ${mode} needs 16.`;
+  }
+
+  const usePadding = settings.padding === "PKCS7" && mode !== "CTR";
+  const data = encrypt && usePadding ? addPkcs7Padding(bytes) : bytes;
+
+  if (mode !== "CTR" && data.length % 16 !== 0) {
+    const hint = encrypt ? "Set Padding to PKCS7." : "Ciphertext is cut off, or an earlier step is wrong.";
+    throw `Data is ${data.length} bytes, not a multiple of 16. ${hint}`;
+  }
+
+  const options = { mode: CryptoJS.mode[mode], padding: CryptoJS.pad.NoPadding, iv: toWordArray(iv) };
+
+  if (encrypt) {
+    const encrypted = CryptoJS.AES.encrypt(toWordArray(data), toWordArray(key), options);
+    return fromWordArray(encrypted.ciphertext);
+  }
+
+  const decrypted = fromWordArray(CryptoJS.AES.decrypt({ ciphertext: toWordArray(data) }, toWordArray(key), options));
+  return usePadding ? removePkcs7Padding(decrypted) : decrypted;
+}
+
+
+const KEY_FORMATS = ["Hex", "UTF8", "Base64"];
+
+const AES_OPTIONS = [
+  { id: "key", label: "Key", type: "key", default: { value: "", format: "Hex" } },
+  { id: "iv", label: "IV", type: "key", default: { value: "", format: "Hex" } },
+  { id: "mode", label: "Mode", type: "select", choices: ["CBC", "ECB", "CTR", "GCM"], default: "CBC", half: true },
+  { id: "padding", label: "Padding", type: "select", choices: ["PKCS7", "None"], default: "PKCS7", half: true },
+];
+
+const OPERATIONS = {
+  "From Hex": {
+    category: "Data format",
+    run: bytes => hexToBytes(latin1.decode(bytes)),
+  },
+  "To Hex": {
+    category: "Data format",
+    options: [{ id: "separator", label: "Separator", type: "select", choices: ["Space", "None", "Newline every 16"], default: "Space" }],
+    outputsText: true,
+    run: (bytes, options) => encoder.encode(hexWithSeparator(bytes, options.separator)),
+  },
+  "From Base64": {
+    category: "Data format",
+    run: bytes => base64ToBytes(latin1.decode(bytes)),
+  },
+  "To Base64": {
+    category: "Data format",
+    outputsText: true,
+    run: bytes => encoder.encode(bytesToBase64(bytes)),
+  },
+  "AES Decrypt": {
+    category: "Encryption",
+    options: AES_OPTIONS,
+    run: (bytes, options) => aes(bytes, options, false),
+  },
+  "AES Encrypt": {
+    category: "Encryption",
+    options: AES_OPTIONS,
+    run: (bytes, options) => aes(bytes, options, true),
+  },
+  "XOR": {
+    category: "Encryption",
+    options: [{ id: "key", label: "Key", type: "key", default: { value: "", format: "Hex" } }],
+    run: (bytes, options) => xorBytes(bytes, parseKey(options.key)),
+  },
+  "Gunzip": {
+    category: "Compression",
+    run: bytes => decompressOrFail(bytes, "gzip", "Not gzip data (gzip starts with 1f 8b)."),
+  },
+  "Zlib Inflate": {
+    category: "Compression",
+    run: bytes => decompressOrFail(bytes, "deflate", "Not zlib data (zlib usually starts with 78)."),
+  },
+  "Raw Inflate": {
+    category: "Compression",
+    run: bytes => decompressOrFail(bytes, "deflate-raw", "Not raw deflate data."),
+  },
+  "Drop Bytes": {
+    category: "Bytes",
+    options: [
+      { id: "start", label: "Start", type: "number", default: 0, half: true },
+      { id: "length", label: "Length", type: "number", default: 4, half: true },
+    ],
+    run: (bytes, options) => dropBytes(bytes, options.start, options.length),
+  },
+  "Take Bytes": {
+    category: "Bytes",
+    options: [
+      { id: "start", label: "Start", type: "number", default: 0, half: true },
+      { id: "length", label: "Length (0 = to end)", type: "number", default: 0, half: true },
+    ],
+    run: (bytes, options) => takeBytes(bytes, options.start, options.length),
+  },
+  "Protobuf Decode": {
+    category: "Protocol",
+    options: [{ id: "packed", label: "Guess packed int / float lists", type: "checkbox", default: false }],
+    isProtobuf: true,
+  },
+};
+
+const PRESETS = {
+  "Hex → AES → Protobuf": {
+    steps: [["From Hex"], ["AES Decrypt", DEFAULT_AES], ["Protobuf Decode"]],
+    exampleInput: EXAMPLE_ENCRYPTED_HEX,
+  },
+  "Hex → Protobuf": {
+    steps: [["From Hex"], ["Protobuf Decode"]],
+    exampleInput: EXAMPLE_PLAIN_HEX,
+  },
+};
+
+function createStep(name, presetOptions = {}) {
+  const options = {};
+  for (const option of OPERATIONS[name].options || []) {
+    const value = presetOptions[option.id] !== undefined ? presetOptions[option.id] : option.default;
+    options[option.id] = structuredClone(value);
+  }
+  return { name, options, disabled: false };
+}
+
+
+function escapeHtml(text) {
+  const replacements = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" };
+  return String(text).replace(/[&<>"]/g, char => replacements[char]);
+}
+
+function formatFloat(value) {
+  const text = shortestFloatText(value.float, value.width);
+  return /^-?\d+$/.test(text) ? text + ".0" : text;
+}
+
+function renderJson(value, settings) {
+  const plain = [];
+  const html = [];
+  const indentStep = " ".repeat(settings.indent);
+
+  function write(text, className) {
+    plain.push(text);
+    html.push(className ? `<span class="${className}">${escapeHtml(text)}</span>` : escapeHtml(text));
+  }
+
+  function writeValue(item, indent) {
+    if (typeof item === "string") {
+      return write(JSON.stringify(item), "string");
+    }
+    if (typeof item === "bigint") {
+      return write(item.toString(), "number");
+    }
+    if (item.float !== undefined) {
+      return write(formatFloat(item), "float");
+    }
+    if (item.hex !== undefined) {
+      return write(JSON.stringify(item.hex), "bytes");
+    }
+
+    const inner = indent + indentStep;
+
+    if (Array.isArray(item)) {
+      if (item.length === 0) {
+        return write("[]", "punct");
+      }
+      write("[", "punct");
+      write("\n");
+      item.forEach((element, i) => {
+        write(inner);
+        writeValue(element, inner);
+        if (i < item.length - 1) {
+          write(",", "punct");
+        }
+        write("\n");
+      });
+      return write(indent + "]", "punct");
+    }
+
+    if (item.entries.length === 0) {
+      return write("{}", "punct");
+    }
+    write("{", "punct");
+    write("\n");
+    item.entries.forEach((entry, i) => {
+      const key = settings.typesInKeys ? `${entry.key} · ${entry.type}` : entry.key;
+      write(inner);
+      write(JSON.stringify(key), "key");
+      write(": ", "punct");
+      writeValue(entry.values.length === 1 ? entry.values[0] : entry.values, inner);
+      if (i < item.entries.length - 1) {
+        write(",", "punct");
+      }
+      write("\n");
+    });
+    write(indent + "}", "punct");
+  }
+
+  writeValue(value, "");
+  return { text: plain.join(""), html: html.join("") };
+}
+
+function displayValue(value) {
+  if (typeof value === "string") {
+    return { text: JSON.stringify(value), className: "string" };
+  }
+  if (typeof value === "bigint") {
+    return { text: value.toString(), className: "number" };
+  }
+  if (value.float !== undefined) {
+    return { text: formatFloat(value), className: "float" };
+  }
+  const hex = value.hex.length > 96 ? value.hex.slice(0, 96) + "…" : value.hex;
+  return { text: hex, className: "bytes" };
+}
+
+function treeRow({ depth, expandable, key, type, text, className, position }) {
+  const offset = position
+    ? `0x${position.start.toString(16).padStart(4, "0")} · ${position.end - position.start} B`
+    : "";
+  const badgeClass = type === "message" ? "type-badge message" : "type-badge";
+
+  return `<div class="tree-row" style="--depth:${depth}">`
+    + `<span class="caret">${expandable ? "▶" : ""}</span>`
+    + `<span class="field-number">${escapeHtml(key)}</span>`
+    + `<span class="${badgeClass}">${escapeHtml(type)}</span>`
+    + `<span class="field-value ${className}" title="${escapeHtml(text)}">${escapeHtml(text)}</span>`
+    + `<span class="field-offset">${offset}</span>`
+    + `</div>`;
+}
+
+function plural(count, word) {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+function renderTree(roots, label) {
+  const html = [];
+
+  function addNode(key, value, type, position, depth) {
+    const open = depth < TREE_OPEN_LEVELS ? " open" : "";
+
+    if (value && value.entries) {
+      const count = value.entries.reduce((sum, entry) => sum + entry.values.length, 0);
+      const row = treeRow({ depth, expandable: true, key, type, text: plural(count, "field"), className: "summary", position });
+      html.push(`<details${open}><summary>${row}</summary>`);
+      addEntries(value.entries, depth + 1);
+      html.push("</details>");
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      const row = treeRow({ depth, expandable: true, key, type, text: plural(value.length, "item"), className: "summary", position });
+      html.push(`<details${open}><summary>${row}</summary>`);
+      value.forEach((item, i) => {
+        const shown = displayValue(item);
+        html.push(treeRow({ depth: depth + 1, key: `[${i}]`, type: type.replace("packed ", ""), ...shown }));
+      });
+      html.push("</details>");
+      return;
+    }
+
+    html.push(treeRow({ depth, key, type, position, ...displayValue(value) }));
+  }
+
+  function addEntries(entries, depth) {
+    for (const entry of entries) {
+      entry.values.forEach((value, i) => {
+        const key = entry.values.length > 1 ? `${entry.key}[${i}]` : entry.key;
+        addNode(key, value, typeOfValue(value, entry.type), entry.positions[i], depth);
+      });
+    }
+  }
+
+  if (roots.length === 1) {
+    addEntries(roots[0].entries, 0);
+  } else {
+    roots.forEach((root, i) => addNode(`${label} ${i}`, root, "message", null, 0));
+  }
+
+  return html.join("");
+}
+
+function renderHexDump(bytes) {
+  const lines = [];
+  const shown = Math.min(bytes.length, HEX_DUMP_LIMIT);
+
+  for (let offset = 0; offset < shown; offset += 16) {
+    const row = bytes.subarray(offset, Math.min(offset + 16, shown));
+    let hex = "";
+    for (let i = 0; i < 16; i++) {
+      hex += i < row.length ? row[i].toString(16).padStart(2, "0") : "  ";
+      hex += i === 7 ? "  " : " ";
+    }
+    const ascii = Array.from(row, byte => (byte >= 0x20 && byte < 0x7f ? String.fromCharCode(byte) : ".")).join("");
+    lines.push(
+      `<span class="offset">${offset.toString(16).padStart(8, "0")}</span>  ${escapeHtml(hex)} <span class="ascii">${escapeHtml(ascii)}</span>`
+    );
+  }
+
+  return lines.join("\n");
+}
+
+
+const ui = {
+  operationList: document.getElementById("operation-list"),
+  search: document.getElementById("search"),
+  recipe: document.getElementById("recipe"),
+  recipeArea: document.getElementById("recipe-area"),
+  autoBake: document.getElementById("auto-bake"),
+  input: document.getElementById("input"),
+  inputMeta: document.getElementById("input-meta"),
+  output: document.getElementById("output"),
+  outputMeta: document.getElementById("output-meta"),
+  outputTabs: document.getElementById("output-tabs"),
+  tabFields: document.getElementById("tab-fields"),
+  tabJson: document.getElementById("tab-json"),
+  typesInKeys: document.getElementById("types-in-keys"),
+  indent: document.getElementById("indent"),
+  copy: document.getElementById("copy"),
+  statusChip: document.getElementById("status-chip"),
+  statusText: document.getElementById("status-text"),
+  statusbar: document.getElementById("statusbar"),
+};
+
+const storage = {
+  prefix: "hex-proto-decoder:",
+  get(name, fallback) {
+    try {
+      const value = localStorage.getItem(this.prefix + name);
+      return value === null ? fallback : value;
+    } catch {
+      return fallback;
+    }
+  },
+  set(name, value) {
+    try {
+      localStorage.setItem(this.prefix + name, value);
+    } catch {
+      return;
+    }
+  },
+};
+
+let recipe = [];
+let result = null;
+let outputView = storage.get("view", "json");
+let failedStep = -1;
+let failureMessage = "";
+let bakeCounter = 0;
+let bakeTimer = null;
+
+
+function renderOperationList() {
+  const query = ui.search.value.trim().toLowerCase();
+  const byCategory = {};
+
+  for (const [name, operation] of Object.entries(OPERATIONS)) {
+    const matches = !query
+      || name.toLowerCase().includes(query)
+      || operation.category.toLowerCase().includes(query);
+    if (matches) {
+      (byCategory[operation.category] ||= []).push(name);
+    }
+  }
+
+  const sections = Object.entries(byCategory).map(([category, names]) => {
+    const buttons = names.map(name =>
+      `<button type="button" class="operation" draggable="true" data-operation="${escapeHtml(name)}" title="Click or drag into the recipe">`
+      + `${escapeHtml(name)}<span class="add">+</span></button>`
+    );
+    return `<div class="category">${escapeHtml(category)}</div>${buttons.join("")}`;
+  });
+
+  ui.operationList.innerHTML = sections.join("")
+    || `<div class="notice">No operation matches “${escapeHtml(query)}”.</div>`;
+}
+
+function addStep(name, position = recipe.length) {
+  recipe.splice(position, 0, createStep(name));
+  recipeChanged(true);
+}
+
+ui.search.addEventListener("input", renderOperationList);
+
+ui.search.addEventListener("keydown", event => {
+  if (event.key !== "Enter") {
+    return;
+  }
+  const first = ui.operationList.querySelector(".operation");
+  if (first) {
+    addStep(first.dataset.operation);
+    ui.search.value = "";
+    renderOperationList();
+  }
+});
+
+ui.operationList.addEventListener("click", event => {
+  const button = event.target.closest(".operation");
+  if (button) {
+    addStep(button.dataset.operation);
+  }
+});
+
+ui.operationList.addEventListener("dragstart", event => {
+  const button = event.target.closest(".operation");
+  if (button) {
+    event.dataTransfer.setData("text/plain", JSON.stringify({ add: button.dataset.operation }));
+  }
+});
+
+
+function optionHtml(stepIndex, option, value) {
+  const id = `step${stepIndex}-${option.id}`;
+  const data = `data-step="${stepIndex}" data-option="${option.id}"`;
+
+  if (option.type === "checkbox") {
+    return `<label class="checkbox"><input type="checkbox" id="${id}" ${data}${value ? " checked" : ""}>`
+      + `<span>${escapeHtml(option.label)}</span></label>`;
+  }
+
+  if (option.type === "select") {
+    const choices = option.choices
+      .map(choice => `<option${choice === value ? " selected" : ""}>${escapeHtml(choice)}</option>`)
+      .join("");
+    return `<label class="field"><span>${escapeHtml(option.label)}</span>`
+      + `<select id="${id}" ${data}>${choices}</select></label>`;
+  }
+
+  if (option.type === "number") {
+    return `<label class="field"><span>${escapeHtml(option.label)}</span>`
+      + `<input type="number" id="${id}" ${data} value="${escapeHtml(value)}" min="0"></label>`;
+  }
+
+  const formats = KEY_FORMATS
+    .map(format => `<option${format === value.format ? " selected" : ""}>${format}</option>`)
+    .join("");
+  return `<div class="field"><span>${escapeHtml(option.label)}</span><div class="value-with-format">`
+    + `<input type="text" id="${id}" ${data} data-part="value" value="${escapeHtml(value.value)}" spellcheck="false" autocomplete="off" aria-label="${escapeHtml(option.label)}">`
+    + `<select id="${id}-format" ${data} data-part="format" aria-label="${escapeHtml(option.label)} format">${formats}</select>`
+    + `</div></div>`;
+}
+
+function stepOptionsHtml(step, index) {
+  let html = "";
+  let pair = [];
+
+  const flushPair = () => {
+    if (pair.length) {
+      html += `<div class="two-columns">${pair.join("")}</div>`;
+      pair = [];
+    }
+  };
+
+  for (const option of OPERATIONS[step.name].options || []) {
+    if (option.id === "iv" && step.options.mode === "ECB") {
+      continue;
+    }
+    if (option.half) {
+      pair.push(optionHtml(index, option, step.options[option.id]));
+      if (pair.length === 2) {
+        flushPair();
+      }
+      continue;
+    }
+    flushPair();
+    html += optionHtml(index, option, step.options[option.id]);
+  }
+
+  flushPair();
+  return html;
+}
+
+function stepHtml(step, index) {
+  const classes = ["step"];
+  if (step.disabled) {
+    classes.push("disabled");
+  }
+  if (index === failedStep) {
+    classes.push("failed");
+  }
+
+  const isFirst = index === 0;
+  const isLast = index === recipe.length - 1;
+  const toggleLabel = step.disabled ? "Enable step" : "Disable step";
+  const error = index === failedStep ? `<div class="step-error">${escapeHtml(failureMessage)}</div>` : "";
+
+  return `<div class="${classes.join(" ")}" data-step="${index}">`
+    + `<div class="step-header" draggable="true" data-drag="${index}">`
+    + `<span class="step-number">${index + 1}</span>`
+    + `<span class="step-name">${escapeHtml(step.name)}</span>`
+    + `<button type="button" class="icon" data-action="up" data-step="${index}" title="Move up" aria-label="Move up"${isFirst ? " disabled" : ""}>↑</button>`
+    + `<button type="button" class="icon" data-action="down" data-step="${index}" title="Move down" aria-label="Move down"${isLast ? " disabled" : ""}>↓</button>`
+    + `<button type="button" class="icon" data-action="toggle" data-step="${index}" title="${toggleLabel}" aria-label="${toggleLabel}">${step.disabled ? "▷" : "‖"}</button>`
+    + `<button type="button" class="icon" data-action="remove" data-step="${index}" title="Remove step" aria-label="Remove step">✕</button>`
+    + `</div>`
+    + `<div class="step-fields">${stepOptionsHtml(step, index)}</div>`
+    + error
+    + `</div>`;
+}
+
+function renderRecipe() {
+  if (recipe.length === 0) {
+    const buttons = Object.keys(PRESETS)
+      .map(name => `<button type="button" data-preset="${escapeHtml(name)}">${escapeHtml(name)}</button>`)
+      .join("");
+    ui.recipe.innerHTML = `<div class="recipe-empty">Click or drag an operation here.<br><br>`
+      + `Start from a preset:<div class="presets">${buttons}</div></div>`;
+    return;
+  }
+  ui.recipe.innerHTML = recipe.map(stepHtml).join("");
+}
+
+function moveStep(from, to) {
+  const [step] = recipe.splice(from, 1);
+  recipe.splice(to, 0, step);
+}
+
+ui.recipe.addEventListener("click", event => {
+  const presetButton = event.target.closest("[data-preset]");
+  if (presetButton) {
+    applyPreset(presetButton.dataset.preset);
+    return;
+  }
+
+  const button = event.target.closest("[data-action]");
+  if (!button) {
+    return;
+  }
+
+  const index = Number(button.dataset.step);
+  switch (button.dataset.action) {
+    case "remove":
+      recipe.splice(index, 1);
+      break;
+    case "toggle":
+      recipe[index].disabled = !recipe[index].disabled;
+      break;
+    case "up":
+      if (index > 0) {
+        moveStep(index, index - 1);
+      }
+      break;
+    case "down":
+      if (index < recipe.length - 1) {
+        moveStep(index, index + 1);
+      }
+      break;
+  }
+  recipeChanged(true);
+});
+
+function handleOptionChange(event) {
+  const target = event.target;
+  const step = recipe[Number(target.dataset.step)];
+  const optionId = target.dataset.option;
+  if (!step || !optionId) {
+    return;
+  }
+
+  if (target.dataset.part) {
+    step.options[optionId][target.dataset.part] = target.value;
+  } else if (target.type === "checkbox") {
+    step.options[optionId] = target.checked;
+  } else if (target.type === "number") {
+    step.options[optionId] = Number(target.value);
+  } else {
+    step.options[optionId] = target.value;
+  }
+
+  recipeChanged(optionId === "mode");
+}
+
+ui.recipe.addEventListener("input", handleOptionChange);
+
+ui.recipe.addEventListener("change", event => {
+  if (event.target.tagName === "SELECT" || event.target.type === "checkbox") {
+    handleOptionChange(event);
+  }
+});
+
+
+let draggedStep = null;
+
+function dropPosition(y) {
+  const cards = [...ui.recipe.querySelectorAll(".step")];
+  const index = cards.findIndex(card => y < card.getBoundingClientRect().top + card.offsetHeight / 2);
+  return index < 0 ? cards.length : index;
+}
+
+ui.recipe.addEventListener("dragstart", event => {
+  const handle = event.target.closest("[data-drag]");
+  if (!handle) {
+    return;
+  }
+  draggedStep = Number(handle.dataset.drag);
+  event.dataTransfer.setData("text/plain", JSON.stringify({ move: draggedStep }));
+  handle.parentElement.classList.add("dragging");
+});
+
+ui.recipe.addEventListener("dragend", () => {
+  draggedStep = null;
+  ui.recipe.querySelectorAll(".dragging").forEach(card => card.classList.remove("dragging"));
+});
+
+ui.recipeArea.addEventListener("dragover", event => {
+  event.preventDefault();
+  ui.recipe.classList.add("drop-target");
+});
+
+ui.recipeArea.addEventListener("dragleave", event => {
+  if (!ui.recipeArea.contains(event.relatedTarget)) {
+    ui.recipe.classList.remove("drop-target");
+  }
+});
+
+ui.recipeArea.addEventListener("drop", event => {
+  event.preventDefault();
+  ui.recipe.classList.remove("drop-target");
+
+  let payload;
+  try {
+    payload = JSON.parse(event.dataTransfer.getData("text/plain"));
+  } catch {
+    return;
+  }
+
+  let position = dropPosition(event.clientY);
+
+  if (payload.add && OPERATIONS[payload.add]) {
+    addStep(payload.add, position);
+    return;
+  }
+
+  if (payload.move !== undefined && recipe[payload.move]) {
+    if (position > payload.move) {
+      position--;
+    }
+    moveStep(payload.move, position);
+    recipeChanged(true);
+  }
+});
+
+
+function applyPreset(name) {
+  const preset = PRESETS[name];
+  recipe = preset.steps.map(([stepName, options]) => createStep(stepName, options));
+  ui.input.value = formatHex(hexToBytes(preset.exampleInput));
+  storage.set("input", ui.input.value);
+  recipeChanged(true);
+}
+
+function saveRecipe() {
+  storage.set("recipe", JSON.stringify(recipe));
+}
+
+function loadRecipe() {
+  try {
+    const saved = JSON.parse(storage.get("recipe", "null"));
+    if (!Array.isArray(saved) || !saved.every(step => OPERATIONS[step.name])) {
+      return null;
+    }
+    return saved.map(step => ({ ...createStep(step.name, step.options), disabled: Boolean(step.disabled) }));
+  } catch {
+    return null;
+  }
+}
+
+function recipeChanged(structureChanged) {
+  saveRecipe();
+  if (structureChanged) {
+    failedStep = -1;
+    renderRecipe();
+  }
+  if (ui.autoBake.checked) {
+    clearTimeout(bakeTimer);
+    bakeTimer = setTimeout(bake, 150);
+  }
+}
+
+document.getElementById("clear-recipe").addEventListener("click", () => {
+  recipe = [];
+  recipeChanged(true);
+});
+
+
+function setStatus(state, text) {
+  ui.statusChip.dataset.state = state;
+  ui.statusText.textContent = text;
+}
+
+function setStatusbar(items) {
+  ui.statusbar.innerHTML = items
+    .map(item => `<span class="${item.warn ? "warn" : ""}">${escapeHtml(item.text)}</span>`)
+    .join("");
+}
+
+function elapsedSince(start) {
+  return `${Math.max(1, Math.round(performance.now() - start))} ms`;
+}
+
+async function runRecipe() {
+  let data = encoder.encode(ui.input.value);
+  let protobuf = null;
+  let outputsText = false;
+  let stepsRun = 0;
+
+  for (let i = 0; i < recipe.length; i++) {
+    const step = recipe[i];
+    if (step.disabled) {
+      continue;
+    }
+    stepsRun++;
+    const operation = OPERATIONS[step.name];
+
+    try {
+      if (protobuf) {
+        throw "Protobuf Decode has to be the last step.";
+      }
+      if (operation.isProtobuf) {
+        protobuf = await decodeProtobuf(data, step.options.packed);
+      } else {
+        data = await operation.run(data, step.options);
+        outputsText = Boolean(operation.outputsText);
+      }
+    } catch (problem) {
+      const error = new Error(problem && problem.message ? problem.message : String(problem));
+      error.stepIndex = i;
+      error.stepsRun = stepsRun;
+      throw error;
+    }
+  }
+
+  return { data, protobuf, outputsText, stepsRun };
+}
+
+async function bake() {
+  const bakeId = ++bakeCounter;
+  const startedAt = performance.now();
+  const hadFailure = failedStep !== -1;
+
+  ui.inputMeta.textContent = ui.input.value ? `${ui.input.value.length.toLocaleString()} chars` : "";
+
+  let run;
+  try {
+    run = await runRecipe();
+  } catch (error) {
+    if (bakeId !== bakeCounter) {
+      return;
+    }
+    failedStep = error.stepIndex;
+    failureMessage = error.message;
+    renderRecipe();
+    showFailure();
+    setStatus("error", `Step ${failedStep + 1} failed`);
+    setStatusbar([{ text: plural(error.stepsRun, "step") }, { text: elapsedSince(startedAt) }]);
+    return;
+  }
+
+  if (bakeId !== bakeCounter) {
+    return;
+  }
+
+  failedStep = -1;
+  if (hadFailure) {
+    renderRecipe();
+  }
+
+  const steps = { text: plural(run.stepsRun, "step") };
+
+  if (run.protobuf) {
+    const decoded = run.protobuf;
+    result = { kind: "protobuf", ...decoded };
+    renderOutput();
+
+    if (decoded.partial) {
+      setStatus("warn", "Partial decode");
+    } else if (decoded.roots.length > 1) {
+      setStatus("ok", `Decoded ${decoded.roots.length} ${decoded.label}s`);
+    } else {
+      setStatus("ok", "Decoded");
+    }
+    setStatusbar([steps, { text: plural(decoded.fieldCount, "field") }, { text: elapsedSince(startedAt) }, ...decoded.notes]);
+    return;
+  }
+
+  const showAsText = run.outputsText || run.stepsRun === 0;
+  result = { kind: showAsText ? "text" : "bytes", bytes: run.data };
+  renderOutput();
+
+  const hasInput = ui.input.value.length > 0;
+  setStatus(hasInput ? "ok" : "idle", hasInput ? "Done" : "Ready");
+
+  const items = [steps, { text: `${run.data.length.toLocaleString()} bytes out` }, { text: elapsedSince(startedAt) }];
+  if (run.stepsRun === 0 && hasInput) {
+    items.push({ text: "Add an operation to process the input", warn: true });
+  }
+  setStatusbar(items);
+}
+
+function showFailure() {
+  result = null;
+  ui.outputTabs.hidden = true;
+  ui.copy.hidden = true;
+  ui.outputMeta.textContent = "";
+  showOutputControls(null);
+  ui.output.innerHTML = `<div class="error-box"><b>Step ${failedStep + 1} · ${escapeHtml(recipe[failedStep].name)}</b><br>`
+    + `${escapeHtml(failureMessage)}</div>`;
+}
+
+function showOutputControls(kind) {
+  const isProtobuf = kind === "protobuf";
+  document.querySelectorAll(".fields-control").forEach(control => {
+    control.hidden = !(isProtobuf && outputView === "fields");
+  });
+  document.querySelectorAll(".json-control").forEach(control => {
+    control.hidden = !(isProtobuf && outputView === "json");
+  });
+}
+
+function renderOutput() {
+  ui.outputTabs.hidden = result.kind !== "protobuf";
+  ui.copy.hidden = false;
+  showOutputControls(result.kind);
+
+  if (result.kind === "protobuf") {
+    renderProtobufOutput();
+  } else {
+    renderBytesOutput();
+  }
+}
+
+function renderProtobufOutput() {
+  ui.copy.textContent = "Copy JSON";
+  ui.tabFields.setAttribute("aria-selected", String(outputView === "fields"));
+  ui.tabJson.setAttribute("aria-selected", String(outputView === "json"));
+  ui.outputMeta.textContent = plural(result.fieldCount, "field");
+
+  if (result.roots.length === 0) {
+    result.copyText = "";
+    ui.output.innerHTML = `<div class="notice">Only gRPC trailers, no message body.</div>`;
+    return;
+  }
+
+  const value = result.roots.length === 1 ? result.roots[0] : result.roots;
+  const json = renderJson(value, { indent: Number(ui.indent.value), typesInKeys: ui.typesInKeys.checked });
+  result.copyText = json.text;
+
+  ui.output.innerHTML = outputView === "fields"
+    ? `<div class="tree">${renderTree(result.roots, result.label)}</div>`
+    : `<pre class="code" tabindex="0">${json.html}</pre>`;
+}
+
+function renderBytesOutput() {
+  const bytes = result.bytes;
+  ui.outputMeta.textContent = `${bytes.length.toLocaleString()} B`;
+
+  if (bytes.length === 0) {
+    result.copyText = "";
+    ui.copy.textContent = "Copy";
+    ui.output.innerHTML = `<div class="notice">No output yet. Paste input above, then build a recipe or pick a preset in the Recipe panel.</div>`;
+    return;
+  }
+
+  if (result.kind === "text" || isReadableText(bytes)) {
+    let text;
+    try {
+      text = utf8.decode(bytes);
+    } catch {
+      text = latin1.decode(bytes);
+    }
+    result.copyText = text;
+    ui.copy.textContent = "Copy";
+    ui.output.innerHTML = `<pre class="code wrap" tabindex="0">${escapeHtml(text)}</pre>`;
+    return;
+  }
+
+  result.copyText = bytesToHex(bytes);
+  ui.copy.textContent = "Copy hex";
+  const truncated = bytes.length > HEX_DUMP_LIMIT
+    ? `<div class="notice">Showing the first ${HEX_DUMP_LIMIT.toLocaleString()} bytes. Copy takes all of it as hex.</div>`
+    : "";
+  ui.output.innerHTML = `<pre class="code" tabindex="0">${renderHexDump(bytes)}</pre>${truncated}`;
+}
+
+
+function setOutputView(view) {
+  outputView = view;
+  storage.set("view", view);
+  if (result) {
+    renderOutput();
+  }
+}
+
+ui.tabFields.addEventListener("click", () => setOutputView("fields"));
+ui.tabJson.addEventListener("click", () => setOutputView("json"));
+
+ui.typesInKeys.addEventListener("change", () => {
+  storage.set("types-in-keys", ui.typesInKeys.checked ? "1" : "0");
+  if (result) {
+    renderOutput();
+  }
+});
+
+ui.indent.addEventListener("change", () => {
+  storage.set("indent", ui.indent.value);
+  if (result) {
+    renderOutput();
+  }
+});
+
+document.getElementById("expand-all").addEventListener("click", () => {
+  ui.output.querySelectorAll("details").forEach(details => {
+    details.open = true;
+  });
+});
+
+document.getElementById("collapse-all").addEventListener("click", () => {
+  ui.output.querySelectorAll(".tree > details").forEach(details => {
+    details.open = false;
+  });
+});
+
+ui.copy.addEventListener("click", () => {
+  if (!result || !result.copyText) {
+    return;
+  }
+  const label = ui.copy.textContent;
+
+  const flash = text => {
+    ui.copy.textContent = text;
+    setTimeout(() => {
+      ui.copy.textContent = label;
+    }, 1500);
+  };
+
+  const selectInstead = () => {
+    const block = ui.output.querySelector("pre");
+    if (!block) {
+      return;
+    }
+    const range = document.createRange();
+    range.selectNodeContents(block);
+    const selection = getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    flash("Selected");
+  };
+
+  try {
+    navigator.clipboard.writeText(result.copyText).then(() => flash("Copied"), selectInstead);
+  } catch {
+    selectInstead();
+  }
+});
+
+
+ui.input.addEventListener("input", () => {
+  const small = ui.input.value.length < 400000;
+  storage.set("input", small ? ui.input.value : "");
+  recipeChanged(false);
+});
+
+document.getElementById("clear-input").addEventListener("click", () => {
+  ui.input.value = "";
+  storage.set("input", "");
+  recipeChanged(false);
+  ui.input.focus();
+});
+
+document.getElementById("format-hex").addEventListener("click", () => {
+  let bytes;
+  try {
+    bytes = hexToBytes(ui.input.value);
+  } catch {
+    return;
+  }
+  if (bytes.length) {
+    ui.input.value = formatHex(bytes);
+    storage.set("input", ui.input.value);
+    recipeChanged(false);
+  }
+});
+
+document.getElementById("bake").addEventListener("click", bake);
+
+ui.autoBake.addEventListener("change", () => {
+  if (ui.autoBake.checked) {
+    bake();
+  }
+});
+
+
+ui.typesInKeys.checked = storage.get("types-in-keys", "0") === "1";
+ui.indent.value = storage.get("indent", "4");
+renderOperationList();
+
+const savedRecipe = loadRecipe();
+if (savedRecipe) {
+  recipe = savedRecipe;
+  ui.input.value = storage.get("input", "");
+  renderRecipe();
+  bake();
+} else {
+  applyPreset("Hex → AES → Protobuf");
+}
+</script>
+</body>
+</html>
