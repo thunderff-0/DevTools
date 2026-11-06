@@ -25,7 +25,7 @@
   --string: #0b7a4e;
   --number: #b0420a;
   --float: #7c2fb5;
-  --bytes: #5f6673;
+  --bytes: #0b84a5;
   --punct: #9097a3;
   --ok: #18864b;
   --warn: #a06400;
@@ -55,7 +55,7 @@
     --string: #5fd0a0;
     --number: #f0a46e;
     --float: #cf9ef5;
-    --bytes: #8f96a2;
+    --bytes: #4dd4f0;
     --punct: #5c636e;
     --ok: #4cc68a;
     --warn: #e5b04a;
@@ -82,7 +82,7 @@
   --string: #5fd0a0;
   --number: #f0a46e;
   --float: #cf9ef5;
-  --bytes: #8f96a2;
+  --bytes: #4dd4f0;
   --punct: #5c636e;
   --ok: #4cc68a;
   --warn: #e5b04a;
@@ -643,6 +643,34 @@ details[open] > summary .caret {
   font-variant-numeric: tabular-nums;
 }
 
+.frame-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 18px;
+  padding: 10px 14px;
+  background: var(--raised);
+  border-bottom: 1px solid var(--line);
+  font: 12.5px var(--mono);
+}
+
+.frame-part {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.frame-label {
+  color: var(--muted);
+  font: 600 11px var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.frame-bytes {
+  color: var(--number);
+}
+
 .notice,
 .error-box {
   margin: 16px;
@@ -786,7 +814,7 @@ details[open] > summary .caret {
           <span class="panel-title">Input</span>
           <span class="panel-meta" id="input-meta"></span>
           <span class="spacer"></span>
-          <button type="button" id="format-hex" title="Regroup hex as 16 bytes per line">Format hex</button>
+          <button type="button" id="format-hex" title="Remove spaces and line breaks from the hex">Format hex</button>
           <button type="button" id="clear-input">Clear</button>
         </div>
         <textarea id="input" spellcheck="false" autocomplete="off" autocapitalize="off"
@@ -1259,7 +1287,7 @@ function findMessageInside(bytes) {
   }
 
   const parsesFromStart = readFields(bytes).stoppedAt;
-  let best = null;
+  const candidates = [];
 
   for (let header = 0; header <= Math.min(MAX_HEADER_BYTES, total - 1); header++) {
     if (header > 0 && header < parsesFromStart) {
@@ -1268,13 +1296,23 @@ function findMessageInside(bytes) {
     for (const field of readFields(bytes, header).fields) {
       const trailer = total - field.end;
       const coversHalf = field.end - header >= Math.max(2, total >> 1);
-      const smaller = !best || header + trailer < best.header + best.trailer;
-      if (trailer <= MAX_TRAILER_BYTES && (header || trailer) && coversHalf && smaller) {
-        best = { header, trailer };
+      if (trailer <= MAX_TRAILER_BYTES && (header || trailer) && coversHalf) {
+        candidates.push({ header, trailer });
       }
     }
   }
 
+  const headerStatesLength = candidate => candidate.header > 0
+    && findLengthField(bytes.subarray(0, candidate.header), total - candidate.header - candidate.trailer) !== null;
+  const confirmed = candidates.filter(headerStatesLength);
+  const pool = confirmed.length ? confirmed : candidates;
+
+  let best = null;
+  for (const candidate of pool) {
+    if (!best || candidate.header + candidate.trailer < best.header + best.trailer) {
+      best = candidate;
+    }
+  }
   return best;
 }
 
@@ -1321,23 +1359,91 @@ async function splitMessages(bytes, notes) {
   }
 
   const { header, trailer } = found;
-  if (header) {
-    notes.push({ text: `skipped ${header} B header ${bytesToHex(bytes.subarray(0, header))}`, warn: true });
+  return {
+    messages: [bytes.subarray(header, bytes.length - trailer)],
+    label: "message",
+    header: bytes.subarray(0, header),
+    trailer: bytes.subarray(bytes.length - trailer),
+  };
+}
+
+function readNumber(bytes, littleEndian) {
+  let value = 0;
+  for (let i = 0; i < bytes.length; i++) {
+    const byte = littleEndian ? bytes[bytes.length - 1 - i] : bytes[i];
+    value = value * 256 + byte;
   }
-  if (trailer) {
-    notes.push({ text: `skipped ${trailer} B trailer ${bytesToHex(bytes.subarray(bytes.length - trailer))}`, warn: true });
+  return value;
+}
+
+function findLengthField(header, bodyLength) {
+  const targets = [
+    { value: bodyLength, meaning: "body size" },
+    { value: bodyLength + header.length, meaning: "total size" },
+  ];
+  const candidates = [];
+
+  for (let width = 1; width <= Math.min(4, header.length); width++) {
+    candidates.push({ width, encoding: width === 1 ? "1 byte" : `${width} bytes, big-endian`, littleEndian: false });
   }
-  return { messages: [bytes.subarray(header, bytes.length - trailer)], label: "message" };
+  for (let width = 2; width <= Math.min(4, header.length); width++) {
+    candidates.push({ width, encoding: `${width} bytes, little-endian`, littleEndian: true });
+  }
+
+  for (const candidate of candidates) {
+    const field = header.subarray(header.length - candidate.width);
+    const value = readNumber(field, candidate.littleEndian);
+    const target = targets.find(t => t.value === value);
+    if (target) {
+      return { width: candidate.width, value, encoding: candidate.encoding, meaning: target.meaning };
+    }
+  }
+
+  for (let width = 2; width <= Math.min(5, header.length); width++) {
+    const field = header.subarray(header.length - width);
+    try {
+      const [value, end] = readVarint(field, 0, field.length);
+      const target = targets.find(t => t.value === Number(value));
+      if (end === field.length && target) {
+        return { width, value: Number(value), encoding: "varint", meaning: target.meaning };
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+function describeFrame(header, trailer, bodyLength) {
+  if (!header.length && !trailer.length) {
+    return null;
+  }
+  const frame = { header: null, length: null, trailer: null };
+
+  if (header.length) {
+    const lengthField = findLengthField(header, bodyLength);
+    if (lengthField) {
+      frame.header = header.subarray(0, header.length - lengthField.width);
+      frame.length = { bytes: header.subarray(header.length - lengthField.width), ...lengthField };
+    } else {
+      frame.header = header;
+    }
+  }
+  if (trailer.length) {
+    frame.trailer = trailer;
+  }
+  return frame;
 }
 
 async function decodeProtobuf(input, guessPacked) {
   const notes = [];
   const state = { fieldCount: 0, guessPacked, root: null };
   const bytes = await unwrapCompression(input, notes);
-  const { messages, label } = await splitMessages(bytes, notes);
+  const { messages, label, header, trailer } = await splitMessages(bytes, notes);
 
   if (messages && messages.length === 0) {
-    return { roots: [], label, notes, fieldCount: 0, partial: false };
+    return { roots: [], label, notes, fieldCount: 0, partial: false, frame: null };
   }
 
   if (messages) {
@@ -1345,7 +1451,8 @@ async function decodeProtobuf(input, guessPacked) {
       state.root = message;
       return decodeMessage(readFields(message).fields, 0, state);
     });
-    return { roots, label, notes, fieldCount: state.fieldCount, partial: false };
+    const frame = header ? describeFrame(header, trailer, messages[0].length) : null;
+    return { roots, label, notes, fieldCount: state.fieldCount, partial: false, frame };
   }
 
   const attempt = readFields(bytes);
@@ -1359,7 +1466,7 @@ async function decodeProtobuf(input, guessPacked) {
   });
   state.root = bytes;
   const root = decodeMessage(attempt.fields, 0, state);
-  return { roots: [root], label: "message", notes, fieldCount: state.fieldCount, partial: true };
+  return { roots: [root], label: "message", notes, fieldCount: state.fieldCount, partial: true, frame: null };
 }
 
 
@@ -1397,11 +1504,6 @@ function bytesToBase64(bytes) {
     binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   }
   return btoa(binary);
-}
-
-function formatHex(bytes) {
-  const lines = bytesToHex(bytes).match(/.{1,32}/g) || [];
-  return lines.map(line => line.match(/../g).join(" ")).join("\n");
 }
 
 function hexWithSeparator(bytes, separator) {
@@ -1804,6 +1906,28 @@ function renderTree(roots, label) {
   }
 
   return html.join("");
+}
+
+function spacedHex(bytes) {
+  return (bytesToHex(bytes).match(/../g) || []).join(" ");
+}
+
+function renderFrameInfo(frame) {
+  if (!frame) {
+    return "";
+  }
+  const parts = [];
+
+  if (frame.header && frame.header.length) {
+    parts.push(`<span class="frame-part"><span class="frame-label">Header</span>`
+      + `<span class="frame-bytes">${spacedHex(frame.header)}</span></span>`);
+  }
+  if (frame.trailer) {
+    parts.push(`<span class="frame-part"><span class="frame-label">Trailer</span>`
+      + `<span class="frame-bytes">${spacedHex(frame.trailer)}</span></span>`);
+  }
+
+  return `<div class="frame-info">${parts.join("")}</div>`;
 }
 
 function renderHexDump(bytes) {
@@ -2308,7 +2432,17 @@ async function bake() {
     } else {
       setStatus("ok", "Decoded");
     }
-    setStatusbar([steps, { text: plural(decoded.fieldCount, "field") }, { text: elapsedSince(startedAt) }, ...decoded.notes]);
+    const frameNotes = [];
+    if (decoded.frame) {
+      const headerSize = decoded.frame.header ? decoded.frame.header.length : 0;
+      if (headerSize) {
+        frameNotes.push({ text: `${headerSize} B header` });
+      }
+      if (decoded.frame.trailer) {
+        frameNotes.push({ text: `${decoded.frame.trailer.length} B trailer` });
+      }
+    }
+    setStatusbar([steps, { text: plural(decoded.fieldCount, "field") }, { text: elapsedSince(startedAt) }, ...frameNotes, ...decoded.notes]);
     return;
   }
 
@@ -2389,9 +2523,10 @@ function renderProtobufOutput() {
   const json = renderJson(value, { indent: Number(ui.indent.value), typesInKeys: ui.typesInKeys.checked });
   result.copyText = json.text;
 
-  ui.output.innerHTML = outputView === "fields"
+  const body = outputView === "fields"
     ? `<div class="tree">${renderTree(result.roots, result.label)}</div>`
     : `<pre class="code" tabindex="0">${json.html}</pre>`;
+  ui.output.innerHTML = renderFrameInfo(result.frame) + body;
 }
 
 function renderBytesOutput() {
@@ -2519,7 +2654,7 @@ document.getElementById("format-hex").addEventListener("click", () => {
     return;
   }
   if (bytes.length) {
-    ui.input.value = formatHex(bytes);
+    ui.input.value = bytesToHex(bytes);
     storage.set("input", ui.input.value);
     recipeChanged(false);
   }
